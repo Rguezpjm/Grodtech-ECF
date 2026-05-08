@@ -1,0 +1,53 @@
+{
+    "name": "grodtech/ecf-php",
+    "description": "SDK PHP oficial para integrar aplicaciones de servidor con la pasarela ECF GRODTECH (facturación electrónica DGII República Dominicana). Envío de comprobantes en JSON estilo MSeller / DGII v1.0 o XML, con conversión y firma server-side.",
+    "type": "library",
+    "license": "proprietary",
+    "keywords": [
+        "ecf",
+        "dgii",
+        "factura-electronica",
+        "republica-dominicana",
+        "grodtech",
+        "mseller",
+        "facturacion-electronica",
+        "rfce",
+        "comprobante-fiscal-electronico"
+    ],
+    "homepage": "https://ecf.grodtech.com",
+    "support": {
+        "issues": "https://github.com/grodtech/ecf-php/issues",
+        "source": "https://github.com/grodtech/ecf-php",
+        "docs": "https://ecf.grodtech.com/docs",
+        "email": "contacto@grodtech.com",
+        "security": "seguridad@grodtech.com"
+    },
+    "authors": [
+        {
+            "name": "GRODTECH",
+            "homepage": "https://ecf.grodtech.com",
+            "role": "Maintainer"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "ext-json": "*",
+        "ext-curl": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Grodtech\\Ecf\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Grodtech\\Ecf\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
