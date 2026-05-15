@@ -1,26 +1,29 @@
 {
     "name": "grodtech/ecf-php",
-    "description": "SDK PHP oficial para integrar aplicaciones de servidor con la pasarela ECF GRODTECH (facturación electrónica DGII República Dominicana). Envío de comprobantes en JSON estilo MSeller / DGII v1.0 o XML, con conversión y firma server-side.",
+    "description": "SDK PHP oficial para integrar aplicaciones con la pasarela ECF GRODTECH (facturación electrónica DGII República Dominicana). Soporta envío de comprobantes en JSON estilo MSeller/DGII v1.0 o XML, conversión y firma server-side.",
     "type": "library",
     "license": "MIT",
+    "version": "1.0.0",
     "keywords": [
         "ecf",
         "dgii",
         "factura-electronica",
-        "republica-dominicana",
-        "grodtech",
-        "mseller",
         "facturacion-electronica",
-        "rfce",
-        "comprobante-fiscal-electronico"
+        "republica-dominicana",
+        "comprobante-fiscal-electronico",
+        "encf",
+        "sdk",
+        "xml",
+        "grodtech"
     ],
     "homepage": "https://ecf.grodtech.com",
+    "readme": "README.md",
     "support": {
+        "docs": "https://ecf.grodtech.com/docs",
         "issues": "https://github.com/grodtech/ecf-php/issues",
         "source": "https://github.com/grodtech/ecf-php",
-        "docs": "https://ecf.grodtech.com/docs",
         "email": "contacto@grodtech.com",
-        "security": "seguridad@grodtech.com"
+        "security": "mailto:seguridad@grodtech.com"
     },
     "authors": [
         {
@@ -32,7 +35,15 @@
     "require": {
         "php": "^8.1",
         "ext-json": "*",
-        "ext-curl": "*"
+        "ext-curl": "*",
+        "ext-openssl": "*",
+        "ext-dom": "*",
+        "ext-simplexml": "*",
+        "ext-libxml": "*"
+    },
+    "suggest": {
+        "ext-zip": "Requerido si manejas certificados o archivos comprimidos.",
+        "ext-mbstring": "Mejor soporte para caracteres UTF-8 y strings multibyte."
     },
     "autoload": {
         "psr-4": {
@@ -46,7 +57,8 @@
     },
     "config": {
         "sort-packages": true,
-        "optimize-autoloader": true
+        "optimize-autoloader": true,
+        "preferred-install": "dist"
     },
     "minimum-stability": "stable",
     "prefer-stable": true
