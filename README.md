@@ -545,8 +545,7 @@ La pasarela los persiste 10 años en su panel: **Panel → Archivo de Comprobant
 ## Soporte
 
 - **Portal**: [ecf.grodtech.com](https://ecf.grodtech.com)
-- **Documentación API**: `DOCUMENTACION_API_ECF_GRODTECH.txt` en el panel
-- **Soporte técnico**: desde su panel, incluya su RNC y, si aplica, el `trackId` que devolvió la API.
+- **Documentación API**: `[https://](https://grodtech.com/documentacion-para-desarrolladores-ecf/)`
 - **Reportar vulnerabilidades**: ver [SECURITY.md](SECURITY.md)
 
 ---
