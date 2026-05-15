@@ -5,7 +5,14 @@
 [![PSR-4 Autoloading](https://img.shields.io/badge/autoload-PSR--4-brightgreen.svg)](https://www.php-fig.org/psr/psr-4/)
 [![Zero runtime dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](composer.json)
 
-SDK PHP oficial para integrar aplicaciones de servidor con la pasarela **ECF GRODTECH** (facturación electrónica DGII República Dominicana). Permite enviar comprobantes en **JSON** (estilo MSeller / plantillas DGII v1.0) o **XML**, autenticando con la **API Key** de la empresa. La pasarela firma con el certificado `.p12` delegado en el portal y reenvía el documento a la DGII.
+SDK PHP oficial para consumir la pasarela **ECF GRODTECH** (facturación electrónica DGII República Dominicana).
+
+El SDK se encarga de:
+
+- abrir la conexión HTTPS contra la pasarela con TLS estricto,
+- enviar el comprobante (en JSON o XML),
+- mantener la API Key fuera de los logs,
+- normalizar la respuesta heterogénea de DGII a un enum `DgiiOutcome`.
 
 > **Solo servidor.** Nunca incruste la API Key en aplicaciones front‑end (navegador, móvil, escritorio) ni en repositorios públicos.
 
@@ -13,10 +20,10 @@ SDK PHP oficial para integrar aplicaciones de servidor con la pasarela **ECF GRO
 
 ## Índice
 
-- [Características](#características)
+- [Cómo encaja en tu arquitectura](#cómo-encaja-en-tu-arquitectura)
 - [Requisitos](#requisitos)
 - [Instalación](#instalación)
-- [Uso rápido](#uso-rápido)
+- [Uso](#uso)
 - [API del SDK](#api-del-sdk)
 - [Estados (`DgiiOutcome`)](#estados-dgiioutcome)
 - [Endpoints cubiertos](#endpoints-cubiertos)
@@ -31,15 +38,20 @@ SDK PHP oficial para integrar aplicaciones de servidor con la pasarela **ECF GRO
 
 ---
 
-## Características
+## Cómo encaja en tu arquitectura
 
-- **Cero dependencias en runtime**: solo `ext-json` y `ext-curl` (extensiones estándar de PHP).
-- **Secure by default**: HTTPS obligatorio, verificación TLS estricta, protocolos restringidos a HTTP/HTTPS, redirecciones limitadas.
-- **JSON o XML**: envíe documentos en JSON estilo MSeller o XML pre-firmado.
-- **Convertidor JSON → XML local** (`JsonToXml`) para previsualizar el XML que se enviará y validarlo offline.
-- **Normalización de respuestas**: `ResultInterpreter` clasifica respuestas heterogéneas en un enum (`DgiiOutcome`).
-- **API Key protegida**: nunca aparece en `var_dump` / logs accidentales (ver `__debugInfo`).
-- **Compatible con cualquier framework PHP 8.1+** o sin framework (vanilla PHP).
+```
+┌──────────────┐    JSON / XML       ┌─────────────────────┐    XMLDSig firmado     ┌──────────────┐
+│ Tu backend   │  ─────────────────► │ ECF GRODTECH (CRM) │ ─────────────────────► │     DGII     │
+│ (este SDK)   │ ◄───────────────── │  (firma con .p12)   │ ◄───────────────────── │ (recepción)  │
+└──────────────┘   trackId / raw     └─────────────────────┘    trackId             └──────────────┘
+       Bearer <API Key>                                          Bearer <token DGII>
+       configurada en el portal                                  emitido por DGII al CRM
+```
+
+- **Tu backend autentica al CRM con la API Key** que generaste en `https://ecf.grodtech.com`. La API Key viaja en el header `Authorization: Bearer …`.
+- **El CRM autentica con DGII por su cuenta**: usa el certificado `.p12` que cargaste en el portal y obtiene el token DGII vía el flujo `semilla → validacioncertificado`. Tu sistema **nunca** ve ese token.
+- **Tu sistema nunca firma localmente**: el CRM firma cada XML con tu `.p12` antes de reenviarlo a DGII.
 
 ---
 
@@ -56,33 +68,7 @@ SDK PHP oficial para integrar aplicaciones de servidor con la pasarela **ECF GRO
 
 ## Instalación
 
-### Opción A — Repositorio Git privado / GitHub
-
-Si publica este paquete en un repositorio Git (privado o público), declare el repositorio en su `composer.json`:
-
-```json
-{
-  "repositories": [
-    {
-      "type": "vcs",
-      "url": "https://github.com/grodtech/ecf-php.git"
-    }
-  ],
-  "require": {
-    "grodtech/ecf-php": "^1.0"
-  }
-}
-```
-
-Luego:
-
-```bash
-composer update grodtech/ecf-php
-```
-
-### Opción B — Path repository (monorepo / desarrollo local)
-
-Si el paquete vive dentro del proyecto (por ejemplo `packages/grodtech-ecf-php`):
+El paquete se distribuye dentro del repositorio de la aplicación, como **path repository** de Composer. En el `composer.json` de tu proyecto:
 
 ```json
 {
@@ -102,19 +88,15 @@ Si el paquete vive dentro del proyecto (por ejemplo `packages/grodtech-ecf-php`)
 composer update grodtech/ecf-php
 ```
 
-### Opción C — Composer (Packagist)
-
-> Si en el futuro se publica en Packagist:
->
-> ```bash
-> composer require grodtech/ecf-php
-> ```
+> Si más adelante el paquete se publica en un Git privado (GitHub, GitLab, Bitbucket), basta con cambiar el bloque `repositories` a `"type": "vcs"` apuntando a la URL del repo y declarar la versión deseada.
 
 ---
 
-## Uso rápido
+## Uso
 
-### 1. Enviar un e‑CF en JSON (Tipo 31)
+### 1. Enviar un e‑CF en JSON
+
+El SDK acepta el mismo árbol JSON que documenta `DOCUMENTACION_API_ECF_GRODTECH.txt` — raíz `ECF` para los tipos 31, 32, 33, 34, 41, 43, 44, 45, 46 y 47, raíz `RFCE` para el Resumen de Factura de Consumo (Tipo 32 < RD$250 000).
 
 ```php
 <?php
@@ -123,9 +105,8 @@ require __DIR__ . '/vendor/autoload.php';
 use Grodtech\Ecf\Client;
 use Grodtech\Ecf\ResultInterpreter;
 
-// API Key SIEMPRE desde variable de entorno o secret manager
 $client = new Client(
-    'https://ecf.grodtech.com/certeCF', // entorno: TestCF | certeCF | eCF
+    'https://ecf.grodtech.com/certeCF',
     getenv('ECF_GRODTECH_API_KEY') ?: throw new RuntimeException('Falta ECF_GRODTECH_API_KEY')
 );
 
@@ -182,12 +163,9 @@ $result = ResultInterpreter::gatewayRecepcion($response);
 echo 'Estado : ' . $result->outcome->labelEs() . PHP_EOL;
 echo 'TrackId: ' . $result->trackId . PHP_EOL;
 echo 'Detalle: ' . $result->summary . PHP_EOL;
-
-if ($result->outcome->value === 'rejected') {
-    fwrite(STDERR, 'Rechazo DGII: ' . ($result->error ?? '') . PHP_EOL);
-    exit(1);
-}
 ```
+
+> Los placeholders `{{RNC}}`, `{{RAZON_SOCIAL}}`, `{{DIRECCION_EMISOR}}` y `{{FECHA_EMISION}}` los reemplaza el CRM con los datos del contribuyente registrado en el portal — si los actualiza ahí, los siguientes envíos los reflejan sin tocar código. Ver sección 9 del `DOCUMENTACION_API_ECF_GRODTECH.txt` para la lista completa.
 
 ### 2. Enviar un Resumen Factura de Consumo (Tipo 32 < RD$250 000)
 
@@ -224,10 +202,11 @@ $payloadRfce = [
 ];
 
 $response = $client->recepcionJson($payloadRfce);
-$result = ResultInterpreter::gatewayRecepcion($response);
 ```
 
 ### 3. Previsualizar el XML antes de enviarlo
+
+`JsonToXml::documentFromArray()` produce el XML sin firma — útil para validarlo offline contra el XSD oficial DGII v1.0 antes del POST.
 
 ```php
 use Grodtech\Ecf\JsonToXml;
@@ -235,13 +214,14 @@ use Grodtech\Ecf\JsonToXml;
 $built = JsonToXml::documentFromArray($payload);
 if ($built['ok']) {
     file_put_contents('preview_E310000000001.xml', $built['xml']);
-    echo "XML sin firma generado para inspección\n";
 } else {
     fwrite(STDERR, "JSON inválido: {$built['error']}\n");
 }
 ```
 
-### 4. Enviar XML ya firmado por su propio sistema
+### 4. Enviar XML ya firmado por tu propio sistema
+
+Si tu sistema firma localmente con su propio `.p12` (caso avanzado), envía el XML directamente:
 
 ```php
 $xmlFirmado = file_get_contents('comprobante_firmado.xml');
@@ -251,15 +231,17 @@ $result = ResultInterpreter::gatewayRecepcion($response);
 
 ### 5. Aprobación Comercial Electrónica (ACECF)
 
+Cuando tu sistema acepta o rechaza un e-CF recibido de un proveedor, envía el ACECF firmado:
+
 ```php
 $xmlAprobacion = file_get_contents('aprobacion_comercial.xml');
 $response = $client->aprobacionComercialXml($xmlAprobacion);
 $result = ResultInterpreter::gatewayRecepcion($response);
 ```
 
-### 6. Interpretar respuesta de `consultaresultado` DGII
+### 6. Interpretar la consulta posterior a DGII
 
-Cuando consulte el estado posterior por `trackId` directamente a DGII:
+Cuando consultes el estado por `trackId` directamente al endpoint `consultaresultado` de DGII, la respuesta cruda se normaliza así:
 
 ```php
 use Grodtech\Ecf\ResultInterpreter;
@@ -285,7 +267,7 @@ public function __construct(
     string $apiKey,
     int    $timeoutSeconds        = 120,
     int    $connectTimeoutSeconds = 10,
-    bool   $allowInsecureHttp     = false  // ¡Solo desarrollo local!
+    bool   $allowInsecureHttp     = false
 );
 
 public function recepcionJson(array $document): array;
@@ -296,7 +278,7 @@ public function aprobacionComercialXml(string $xml): array;
 **Validaciones del constructor** (lanzan `\InvalidArgumentException`):
 
 - `baseUrl` no vacío y bien formado
-- `baseUrl` debe usar HTTPS (a menos que `allowInsecureHttp = true`)
+- `baseUrl` debe usar HTTPS (a menos que `allowInsecureHttp = true`, reservado para tests locales)
 - `apiKey` no vacío
 - timeouts positivos
 
@@ -323,16 +305,16 @@ public static function dgiiConsultaFromArray(array $json, string $rawBody = ''):
 Constantes para no equivocarse al construir plantillas dinámicas:
 
 ```php
-StandardPlaceholders::RNC;                    // 'RNC'
-StandardPlaceholders::RAZON_SOCIAL;           // 'RAZON_SOCIAL'
-StandardPlaceholders::NOMBRE_COMERCIAL;       // 'NOMBRE_COMERCIAL'
-StandardPlaceholders::DIRECCION_EMISOR;       // 'DIRECCION_EMISOR'
-StandardPlaceholders::FECHA_EMISION;          // 'FECHA_EMISION'
-StandardPlaceholders::FECHA_LIMITE_PAGO;      // 'FECHA_LIMITE_PAGO'
-StandardPlaceholders::FECHA_VENC_SEQ;         // 'FECHA_VENC_SEQ'
-StandardPlaceholders::NCF_MODIFICADO;         // 'NCF_MODIFICADO'
-StandardPlaceholders::CODIGO_SEGURIDAD_RFCE;  // 'CODIGO_SEGURIDAD_RFCE'
-StandardPlaceholders::FECHA_GENERACION_ISO;   // 'FECHA_GENERACION_ISO'
+StandardPlaceholders::RNC;
+StandardPlaceholders::RAZON_SOCIAL;
+StandardPlaceholders::NOMBRE_COMERCIAL;
+StandardPlaceholders::DIRECCION_EMISOR;
+StandardPlaceholders::FECHA_EMISION;
+StandardPlaceholders::FECHA_LIMITE_PAGO;
+StandardPlaceholders::FECHA_VENC_SEQ;
+StandardPlaceholders::NCF_MODIFICADO;
+StandardPlaceholders::CODIGO_SEGURIDAD_RFCE;
+StandardPlaceholders::FECHA_GENERACION_ISO;
 
 StandardPlaceholders::wrap(StandardPlaceholders::RNC); // '{{RNC}}'
 ```
@@ -374,7 +356,7 @@ StandardPlaceholders::wrap(StandardPlaceholders::RNC); // '{{RNC}}'
 | `partial`   | Parcial / condicional  | Aceptado con observaciones (códigos ≠ 0 en `mensajes`)                    |
 | `pending`   | En proceso             | Encolado por contingencia (`queued: true`) o "En proceso" en consulta DGII |
 | `error`     | Error                  | Fallo de transporte, HTTP 5xx, cuerpo inválido, autenticación API         |
-| `unknown`   | Desconocido            | No clasificable; revise `raw` / `parsed` manualmente                      |
+| `unknown`   | Desconocido            | No clasificable; revisa `raw` / `parsed` manualmente                      |
 
 ---
 
@@ -382,9 +364,11 @@ StandardPlaceholders::wrap(StandardPlaceholders::RNC); // '{{RNC}}'
 
 | Método del SDK             | Ruta HTTP                              | Descripción                                  |
 | -------------------------- | -------------------------------------- | -------------------------------------------- |
-| `recepcionJson(array)`     | `POST /fe/recepcion/api/ecf`           | Envía e-CF / RFCE en JSON (estilo MSeller)   |
+| `recepcionJson(array)`     | `POST /fe/recepcion/api/ecf`           | Envía e-CF / RFCE en JSON                    |
 | `recepcionXml(string)`     | `POST /fe/recepcion/api/ecf`           | Envía XML pre-generado                       |
 | `aprobacionComercialXml`   | `POST /fe/aprobacioncomercial/api/ecf` | Aprobación Comercial Electrónica (ACECF)     |
+
+La verificación de conectividad y de la API Key se hace con un `GET` simple a `/fe/autenticacion/api/autenticacion` (no expuesto como método del SDK por ser trivial — un `curl` o `file_get_contents` con el header `Authorization: Bearer …` basta).
 
 ---
 
@@ -409,22 +393,22 @@ Esta sección describe el **modelo de amenazas** del SDK y las contramedidas int
 | Riesgo                                                | Mitigación                                                                                          |
 | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | **Man-in-the-middle (MITM)**                          | `CURLOPT_SSL_VERIFYPEER = true`, `CURLOPT_SSL_VERIFYHOST = 2`, TLS 1.2+ obligatorio                 |
-| **Downgrade a HTTP**                                  | El constructor rechaza `baseUrl` no-HTTPS salvo `allowInsecureHttp` (solo desarrollo local)         |
+| **Downgrade a HTTP**                                  | El constructor rechaza `baseUrl` no-HTTPS salvo `allowInsecureHttp` (reservado para tests locales)  |
 | **SSRF / esquemas exóticos**                          | `CURLOPT_PROTOCOLS` y `CURLOPT_REDIR_PROTOCOLS` restringidos a HTTP/HTTPS — bloquea `file://`, `gopher://`, `ftp://`, etc. |
 | **Open redirect malicioso**                           | `CURLOPT_MAXREDIRS = 3` y solo HTTPS en redirecciones                                               |
 | **Fuga de API Key en `var_dump` / logs**              | `__debugInfo()` redacta la API Key como `*** REDACTED ***`                                          |
-| **Fuga de API Key en mensajes de error de transporte** | Los mensajes de error solo contienen el error de cURL, nunca los headers enviados                  |
+| **Fuga de API Key en mensajes de error de transporte**| Los mensajes de error solo contienen el error de cURL, nunca los headers enviados                   |
 | **Inyección XML al convertir JSON → XML**             | `JsonToXml` valida nombres de tags con regex y escapa valores con `htmlspecialchars(ENT_XML1)`      |
-| **Negociación de protocolo HTTP/0.9 (CVE-2021-22945) **| User-Agent fijo, Content-Type explícito, header `Expect:` deshabilitado para evitar 100-continue   |
+| **Negociación de protocolo HTTP/0.9 (CVE-2021-22945)**| User-Agent fijo, Content-Type explícito, header `Expect:` deshabilitado para evitar 100-continue    |
 | **Hangs / deadlocks**                                 | `CURLOPT_TIMEOUT` (total) + `CURLOPT_CONNECTTIMEOUT` (conexión) configurables, defaults razonables  |
 | **Deserialización insegura**                          | El SDK NO usa `unserialize()`. Solo `json_decode($body, true)` (devuelve arrays, no objetos)        |
 
 ### Lo que el SDK NO hace (responsabilidad del integrador)
 
-- **Almacenar la API Key**: úsela desde variables de entorno, AWS Secrets Manager, Hashicorp Vault, etc. Nunca la commitee.
-- **Rate limiting**: implemente throttling en su lado (típicamente DGII tolera muchos req/seg, pero usted puede recibir 503 si abusa).
+- **Almacenar la API Key**: úsela desde variables de entorno o un secret manager. Nunca la commitee.
+- **Rate limiting**: implemente throttling en su lado.
 - **Reintentos automáticos**: el SDK no reintenta por sí solo. Si quiere reintentar ante 5xx o `curl_error`, hágalo con jitter exponencial en su capa.
-- **Persistir auditoría**: persista `trackId` y `raw` por cada e-CF enviado para responder ante revisiones DGII.
+- **Persistir auditoría**: la pasarela ya conserva el XML firmado, el PDF y la respuesta DGII por 10 años (descargables desde el panel). Aun así, persistir `trackId` y `outcome` en su sistema agiliza la conciliación contable.
 - **Generar el `eNCF`**: la pasarela no asigna secuencias e-NCF; eso lo hace su sistema con las series autorizadas por DGII.
 - **Firmar el XML localmente**: la pasarela firma con el `.p12` que usted cargó en el portal. Si firma localmente, use `recepcionXml()`.
 
@@ -447,21 +431,13 @@ chmod 600 /etc/grodtech/api.key
 chown www-data:www-data /etc/grodtech/api.key
 ```
 
-O, mejor, use un sistema de secretos:
-
-```php
-// Ejemplo AWS Secrets Manager
-$apiKey = (new \Aws\SecretsManager\SecretsManagerClient([...]))
-    ->getSecretValue(['SecretId' => 'grodtech/api-key'])['SecretString'];
-
-$client = new Client('https://ecf.grodtech.com/eCF', $apiKey);
-```
+Lo recomendado es leerla desde una variable de entorno gestionada por el secret manager de su plataforma (Vault, AWS Secrets Manager, Doppler, GCP Secret Manager, etc.) y nunca commitearla.
 
 ---
 
 ## Manejo de errores
 
-### Errores HTTP comunes devueltos por la pasarela
+### Errores HTTP que devuelve la pasarela
 
 | Código | Significado                                                          |
 | ------ | -------------------------------------------------------------------- |
@@ -470,7 +446,7 @@ $client = new Client('https://ecf.grodtech.com/eCF', $apiKey);
 | `403`  | Servicio suspendido (revise pago / plan)                             |
 | `404`  | Empresa no encontrada (API Key huérfana)                             |
 | `415`  | Cuerpo XML/JSON no válido en la recepción                            |
-| `422`  | XML generado desde JSON no se pudo firmar (pase Content-Type correcto y revise estructura) |
+| `422`  | XML rechazado por validación XSD (ver `xsd_errors`) o no se pudo firmar |
 | `502`  | Fallo de autenticación con DGII desde la pasarela                    |
 | `503`  | Falta el certificado `.p12` o no es válido                           |
 
@@ -496,7 +472,7 @@ match ($result->outcome) {
 
 1. **Idempotencia del `eNCF`**: nunca reenvíe el mismo `eNCF` en flujos lógicos distintos. La DGII rechazará por “secuencia ya utilizada”.
 2. **Aproveche `TestCF` y `CerteCF`** antes de pasar a `eCF`. Cambiar de entorno solo requiere cambiar la `baseUrl` del `Client`.
-3. **Persistencia de auditoría**: guarde `trackId` y `raw` por cada e-CF enviado para responder dudas regulatorias.
+3. **Persistencia de auditoría**: la pasarela ya retiene el XML firmado y el PDF por 10 años; usted persista al menos `trackId` y `outcome` en su sistema para conciliación.
 4. **Validación previa**: use `JsonToXml::documentFromArray()` para verificar que su JSON produce un XML estructurado antes de enviarlo.
 5. **Order-aware**: respete el orden de las claves en el JSON. El XSD DGII v1.0 es estricto en `IdDoc`, `Emisor`, `Totales`, etc.
 6. **Timeouts realistas**: si su flujo es síncrono (web request), considere bajar `timeoutSeconds` a 30–60 y reintente en background con `curlError`.
@@ -560,6 +536,9 @@ Es una protección anti-inyección XML: si una clave no cumple `[A-Za-z_][A-Za-z
 
 **¿Por qué el constructor lanza excepción si paso `http://`?**
 Porque la API Key viaja en el header `Authorization` y un MITM podría capturarla en HTTP plano. Use HTTPS siempre. Para tests locales, pase `allowInsecureHttp: true` explícitamente.
+
+**¿Dónde quedan los XML firmados y PDFs?**
+La pasarela los persiste 10 años en su panel: **Panel → Archivo de Comprobantes**. Puede descargar PDF o XML por cada e-CF. Si pierde el archivo en disco, el PDF se regenera bajo demanda desde el XML firmado conservado en la base.
 
 ---
 
