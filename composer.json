@@ -2,7 +2,7 @@
     "name": "grodtech/ecf-php",
     "description": "SDK PHP oficial para integrar aplicaciones de servidor con la pasarela ECF GRODTECH (facturación electrónica DGII República Dominicana). Envío de comprobantes en JSON estilo MSeller / DGII v1.0 o XML, con conversión y firma server-side.",
     "type": "library",
-    "license": "proprietary",
+    "license": "MIT",
     "keywords": [
         "ecf",
         "dgii",
