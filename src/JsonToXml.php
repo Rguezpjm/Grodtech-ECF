@@ -3,7 +3,7 @@
 namespace Grodtech\Ecf;
 
 /**
- * Convierte documento JSON estilo MSeller/DGII (`{ "ECF": { ... } }` o `{ "RFCE": { ... } }`) a XML
+ * Convierte documento JSON conforme a DGII v1.0 (`{ "ECF": { ... } }` o `{ "RFCE": { ... } }`) a XML
  * sin firma, respetando el orden de claves del arreglo (relevante para IdDoc y XSD).
  *
  * El servidor GRODTECH vuelve a validar y firma antes de enviar a la DGII.
